@@ -1,0 +1,210 @@
+---
+title: "A Look at Suicide Rates Between 1985 and 2015"
+author: "Oluwafunmilayo Adewole"
+date: "5/17/2019"
+output: html_document
+---
+
+According to the web page for the dataset we're using (https://www.kaggle.com/russellyates88/suicide-rates-overview-1985-to-2016), the inspiration for the composition of this dataset was suicide prevention, which is always a worthwhile topic. In this tutorial, I want to see if we can determine at least one potential factor in the rates of suicide in the United States and around the world, namely the wealth of a country. We'll use hypothesis testing to draw some simple conclusions about the rates of suicide as they relate to age, sex, and a country's wealth (GDP).
+
+First we're going to import some libraries that will allow us to work through our data:
+
+```{r setup, include=TRUE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(tidyverse)
+library(broom)
+```
+
+
+## Obtaining the Data
+We wouldn't be able to do anything very useful without any data to work with, so we'll start by grabbing the data we want to look at. I've chosen a dataset from Kaggle, downloaded as a .csv (comma-separated value) file. This means that each entity/piece of data is stored as a set of attribute values separated by commas. We can use the read_csv function to bring our data into our workspace, and store it into an object:
+
+```{r message=FALSE}
+suicide_info <- read_csv("~/Downloads/suicide_rates_1985_to_2016_master.csv")
+suicide_info
+```
+(See notes about the data at the end of this document)
+
+# Tidying the Data
+Now let's tidy up our data and make nice to view and easier to use. 
+
+In addition to holding two attirbutes in one column, the "country-year" column seems a bit redundant since we already have two separate columns for year and country. Also, there isn't enough information for the yearly HDI to use for each country. We do not make any use of the generation attribute, as we are only looking at age, sex, and gdp as our attributes of interest. As such, we'll  exclude these columns from our table.
+
+```{r}
+suicide_info <- suicide_info %>%
+  select(-`country-year`, -`HDI for year`, -generation) %>%
+  rename(GDP_per_capita = `gdp_per_capita ($)`, 
+         GDP_for_year = `gdp_for_year ($)`,
+         suicides_per_100k = `suicides/100k pop`)
+
+# So that the ages would be listed in order...
+suicide_info$age <- factor(suicide_info$age, levels = c("5-14 years", "15-24 years", "25-34 years", "35-54 years", "55-74 years", "75+ years"))
+
+suicide_info
+```
+
+# Exploring Our Data
+Now that our data is a little cleaner, we're going to see if we can identify any trends or patterns between suicide rates and certain attributes. Let's look at the U.S. first and visualize how the rate of suicide (i.e. suicides_no/population) compares for the different age groups between 1985 and 2016:
+
+```{r}
+usa_rates <- suicide_info %>%
+  filter(country == "United States")
+
+usa_rates
+
+usa_rates %>%
+  group_by(age) %>%
+  summarize(avg_suicide_rate = mean(suicides_per_100k))
+
+usa_rates %>%
+  group_by(age) %>%
+  summarize(avg_suicide_rate = mean(suicides_per_100k)) %>%
+  ggplot(aes(x= age, y= avg_suicide_rate)) +
+    geom_bar(stat = "identity")
+```
+
+The bar graph tells us that, between 1985 and 2016, suicides were much higher on average among older members of the population in the U.S., and moderately high for people in their teenage years and older. From this chart it appears that the older people get, the more likely they are to commit suicide. 
+
+
+```{r}
+tmp <- usa_rates %>%
+  group_by(year, age) %>%
+  summarize(avg_suicide_rate = mean(suicides_per_100k)) %>%
+  arrange(age)
+
+tmp %>%
+  ggplot(aes(x=year, y=avg_suicide_rate, color = age)) +
+    geom_point(filter(tmp, age == "5-14 years"), mapping = aes(x=year, y=avg_suicide_rate, color="5-14 years")) +
+    geom_line(filter(tmp, age == "5-14 years"), mapping = aes(x=year, y=avg_suicide_rate, color="5-14 years")) +
+    geom_point(filter(tmp, age == "15-24 years"), mapping = aes(x=year, y=avg_suicide_rate, color="15-24 years")) +
+    geom_line(filter(tmp, age == "15-24 years"), mapping = aes(x=year, y=avg_suicide_rate, color="15-24 years")) +
+    geom_point(filter(tmp, age == "25-34 years"), mapping = aes(x=year, y=avg_suicide_rate, color="25-34 years")) +
+    geom_line(filter(tmp, age == "25-34 years"), mapping = aes(x=year, y=avg_suicide_rate, color="25-34 years")) +
+    geom_point(filter(tmp, age == "35-54 years"), mapping = aes(x=year, y=avg_suicide_rate, color="35-54 years")) +
+    geom_line(filter(tmp, age == "35-54 years"), mapping = aes(x=year, y=avg_suicide_rate, color="35-54 years")) +
+    geom_point(filter(tmp, age == "55-74 years"), mapping = aes(x=year, y=avg_suicide_rate, color="55-74 years")) +
+    geom_line(filter(tmp, age == "55-74 years"), mapping = aes(x=year, y=avg_suicide_rate, color="55-74 years")) +
+    geom_point(filter(tmp, age == "75+ years"), mapping = aes(x=year, y=avg_suicide_rate, color="75+ years")) +
+    geom_line(filter(tmp, age == "75+ years"), mapping = aes(x=year, y=avg_suicide_rate, color="75+ years")) +
+  scale_color_discrete(breaks=c("5-14 years", "15-24 years", "25-34 years", "35-54 years", "55-74 years", "75+ years"))
+```
+
+It might be easier to see the difference in trend between each individual group using faceting in the following plot:
+
+
+```{r}
+usa_rates %>%
+  group_by(year, age) %>%
+  summarize(avg_suicide_rate = mean(suicides_per_100k)) %>%
+  ggplot(aes(x=year, y=avg_suicide_rate, color = age)) +
+    facet_grid(age ~ ., scales = "free") +
+    geom_point(filter(tmp, age == "5-14 years"), mapping = aes(x=year, y=avg_suicide_rate, color="5-14 years")) +
+    geom_line(filter(tmp, age == "5-14 years"), mapping = aes(x=year, y=avg_suicide_rate, color="5-14 years")) +
+    geom_point(filter(tmp, age == "15-24 years"), mapping = aes(x=year, y=avg_suicide_rate, color="15-24 years")) +
+    geom_line(filter(tmp, age == "15-24 years"), mapping = aes(x=year, y=avg_suicide_rate, color="15-24 years")) +
+    geom_point(filter(tmp, age == "25-34 years"), mapping = aes(x=year, y=avg_suicide_rate, color="25-34 years")) +
+    geom_line(filter(tmp, age == "25-34 years"), mapping = aes(x=year, y=avg_suicide_rate, color="25-34 years")) +
+    geom_point(filter(tmp, age == "35-54 years"), mapping = aes(x=year, y=avg_suicide_rate, color="35-54 years")) +
+    geom_line(filter(tmp, age == "35-54 years"), mapping = aes(x=year, y=avg_suicide_rate, color="35-54 years")) +
+    geom_point(filter(tmp, age == "55-74 years"), mapping = aes(x=year, y=avg_suicide_rate, color="55-74 years")) +
+    geom_line(filter(tmp, age == "55-74 years"), mapping = aes(x=year, y=avg_suicide_rate, color="55-74 years")) +
+    geom_point(filter(tmp, age == "75+ years"), mapping = aes(x=year, y=avg_suicide_rate, color="75+ years")) +
+    geom_line(filter(tmp, age == "75+ years"), mapping = aes(x=year, y=avg_suicide_rate, color="75+ years")) +
+  theme(legend.position = "none") +
+  scale_color_discrete(breaks=c("5-14 years", "15-24 years", "25-34 years", "35-54 years", "55-74 years", "75+ years"))
+```
+
+
+Using either of the scatter plots for each age group specifically, we see that for ages 15-24 and 75+ have seen an overall decline in the rate of suicides, while groups between the ages of 25 to 74 have all seen an overall increase. For the youngest group, while the rate of suicides is low in general, there has been slight increase.
+
+Next let's look at sex. We can use a similar process to examine this attribute:
+
+```{r}
+usa_rates %>%
+  group_by(sex) %>%
+  summarize(avg_suicide_rate = mean(suicides_per_100k)) %>%
+  ggplot(aes(x= sex, y= avg_suicide_rate)) +
+    geom_bar(stat = "identity")
+```
+
+```{r}
+
+tmp <- usa_rates %>%
+  group_by(year, sex) %>%
+  summarize(avg_suicide_rate = mean(suicides_per_100k))
+
+tmp %>%
+  ggplot(aes(x=year, y=avg_suicide_rate, color=sex)) +
+    geom_point(filter(tmp, sex == "male"), mapping = aes(x=year, y=avg_suicide_rate, color="male")) +
+    geom_line(filter(tmp, sex == "male"), mapping = aes(x=year, y=avg_suicide_rate, color="male")) +
+    geom_point(filter(tmp, sex == "female"), mapping = aes(x=year, y=avg_suicide_rate, color="female")) +
+    geom_line(filter(tmp, sex == "female"), mapping = aes(x=year, y=avg_suicide_rate, color="female"))
+```
+
+
+From both plots, it is apparent that in the U.S., men are reported to have committed suicide at significantly higher rates than women. Furthermore, the scatter plot shows us that there is a larger decline in suicides for men while rates for women appear to be somewhat steady with only a slight dip between 1985 and 2000, and an only slight increase from then until 2016.
+
+Let's look at one final attribute, GDP per capita (2).   
+
+```{r}
+usa_rates %>%
+  group_by(GDP_per_capita) %>%
+  summarize(avg_suicide_rate = mean(suicides_per_100k)) %>%
+  ggplot(aes(x= GDP_per_capita, y= avg_suicide_rate, color=GDP_per_capita)) +
+    geom_point() +
+    geom_line()
+```
+
+This is not what I might have expected to see, but is it interesting to come out with. The rates of suicide are much higher for a much lower GDP in the US, and then they drop significantly for the more intermediate GDP amounts. This suggest that the more the population produces, the fewer suicides tend to have occurred. But then there is dramatic uptick in suicides as the GDP continues to increase. One might have thought that wealth would be better associated with fewer suicides. At least in the United States, this does not appear to be the case.
+
+# Hypothesis Testing (GDP and Suicide Rates)
+
+I am extremely hesitant to include this portion of my tutorial because the dataset does not include a significant part of the population. Russia and hundreds of other countries have been excluded from this dataset, and for this reason, I do not believe it is representative of the entire population. This is also a good part of the reason why, in the prior sections, I focused on analyzing one specific country, because I had more confidence in how the data provided represented its specific countries than for the world as a whole.
+
+
+Even so, it might be interesting to try to go further and see if we can determine between wealthier countries and the rate of suicides (suicide/100k). Perhaps richer countries tend to have lower rates of suicide. To do this, we can apply hypothesis testing to our analysis. We may also want to look at this on a global scale, so we'll first gather some data regarding all the countries in our dataset, namely average GDP per capita of each country, and average rate of suicide. Our null hypothesis will be that a higher GDP does not have any association or relation with a lower suicide rate.
+
+```{r}
+tmp <- suicide_info %>%
+  group_by(country) %>%
+  summarize(avg_GDP_per_capita = mean(GDP_per_capita), avg_suicide_rate = mean(suicides_per_100k))
+
+tmp
+
+tmp %>%
+  ggplot(aes(x=avg_GDP_per_capita, y=avg_suicide_rate)) +
+    geom_point() +
+    geom_point(filter(tmp, country == "United States"), mapping = aes(x=avg_GDP_per_capita, y=avg_suicide_rate, color="United States")) +
+    geom_point(filter(tmp, country == "Lithuania"), mapping = aes(x=avg_GDP_per_capita, y=avg_suicide_rate, color="Lithuania")) +
+    geom_point(filter(tmp, country == "United Kingdom"), mapping = aes(x=avg_GDP_per_capita, y=avg_suicide_rate, color="United Kingdom")) +
+    geom_point(filter(tmp, country == "Australia"), mapping = aes(x=avg_GDP_per_capita, y=avg_suicide_rate, color="Australia")) +
+    geom_point(filter(tmp, country == "Thailand"), mapping = aes(x=avg_GDP_per_capita, y=avg_suicide_rate, color="Thailand")) +
+    geom_smooth(method = lm)
+```
+
+We'll try to fit our data with a linear model:
+
+```{r}
+suicide_fit <- lm(avg_suicide_rate ~ avg_GDP_per_capita, data = tmp)
+
+suicide_fit %>% 
+  augment() %>%
+  ggplot(aes(x=.fitted,y=.resid)) +
+    geom_point() + 
+    geom_smooth() +
+    labs(x="fitted", y="residual")
+
+```
+
+
+Unfortunately, this tutorial is incomplete, due to technical and timing issues. What would have come after everything above would have been first an elimination of the outliers to see if that would help a linear model fit our data better. It also would hopefully have given us more focused data to work with (less bias/skew). Additionally, we would have obtained summary statistics to see whether or not the p-value was less than or greater than 0.05 (for a 95% confidence interval). Had what we found been less than 0.05, we would have been able to reject the null hypothesis we states before and say that a higher GDP has some association with lower suicide rates, otherwise we would not reject it. 
+
+
+Notes:
+
+1. HDI or Human Development Index is a measure of "...average achievement in three basic dimensions of human development — a long and healthy life, knowledge and a decent standard of living." Unfortunately, there is a significant amount of missing data for the countries included in this dataset for this attribute, so we do not use it in our analysis. For more information on this topic, you can visit the following links: http://hdr.undp.org/en/indicators/137506 ; http://hdr.undp.org/sites/default/files/hdr2018_technical_notes.pdf
+
+2. GDP (Gross Domestic Product) is a often used as a measure of the economic output of a country. GDP per capita refers to what each person gives out on average. I chose GDP per capita because the numbers appear much easier to work with (whole numbers vs exponential values), and it provides "...a better indicator of a nation's living standards since it adjusts for population...an estimate of the standard of living" (https://www.investopedia.com/terms/p/per-capita-gdp.asp).
+
+3. Several countries were excluded from this dataset including China, the majority of Africa, India, and many others (noted by Grecnik in the Kaggle discussion of the dataset: https://www.kaggle.com/russellyates88/suicide-rates-overview-1985-to-2016/discussion/82269).
